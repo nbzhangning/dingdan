@@ -8,16 +8,159 @@ const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 
 // 配置信息
 const CONFIG = {
-    port: 3330, // 本服务监听端口（本地开发时使用）
+    port: Number(process.env.PORT) || 3330, // 本服务监听端口（本地开发时使用）
     // 目标ERP地址（接收数据后转发到这里）
     // 这是真正的ERP订单接收接口 targetUrl: 'http://60.12.218.220:5030/receive_data',
-    targetUrl: 'http://172.16.24.216:5030/receive_data',
+    targetUrl: process.env.ERP_TARGET_URL || 'http://172.16.24.216:5030/receive_data',
     // 旧地址（备用）
-    oldUrl: 'http://101.71.121.242:6881/hessw_webservice_4.3.33/DSOrder'
+    oldUrl: 'http://101.71.121.242:6881/hessw_webservice_4.3.33/DSOrder',
+    strictErpSync: process.env.ERP_STRICT_MODE === '1', // 严格模式：ERP失败时接口返回失败
+    retryEnabled: process.env.ERP_RETRY_ENABLED !== '0',
+    retryMaxAttempts: Number(process.env.ERP_RETRY_MAX_ATTEMPTS) || 3,
+    retryDelayMs: Number(process.env.ERP_RETRY_DELAY_MS) || 30000,
+    retryQueueLimit: Number(process.env.ERP_RETRY_QUEUE_LIMIT) || 500
 };
 
 // 存储接收到的数据（实际应用中应使用数据库）
 const receivedData = [];
+
+
+// 失败重试队列（内存）
+const retryQueue = [];
+const erpStats = {
+    successCount: 0,
+    failureCount: 0,
+    queuedCount: 0,
+    droppedCount: 0
+};
+
+function enqueueRetry(orderData, recordId, lastError) {
+    if (!CONFIG.retryEnabled) return;
+
+    if (retryQueue.length >= CONFIG.retryQueueLimit) {
+        erpStats.droppedCount += 1;
+        console.error(`❌ 重试队列已满(${CONFIG.retryQueueLimit})，丢弃数据ID: ${recordId}`);
+        return;
+    }
+
+    retryQueue.push({
+        recordId,
+        orderData,
+        attempts: 0,
+        lastError: lastError ? String(lastError.message || lastError) : '',
+        nextRunAt: Date.now() + CONFIG.retryDelayMs,
+        createdAt: new Date().toISOString()
+    });
+
+    erpStats.queuedCount += 1;
+}
+
+async function processRetryQueue() {
+    if (!CONFIG.retryEnabled || retryQueue.length === 0) return;
+
+    const now = Date.now();
+    for (let i = retryQueue.length - 1; i >= 0; i--) {
+        const item = retryQueue[i];
+        if (item.nextRunAt > now) continue;
+
+        item.attempts += 1;
+        try {
+            await syncToERP(item.orderData);
+            erpStats.successCount += 1;
+            console.log(`✅ 重试成功，数据ID: ${item.recordId}，尝试次数: ${item.attempts}`);
+            retryQueue.splice(i, 1);
+        } catch (error) {
+            erpStats.failureCount += 1;
+            item.lastError = String(error.message || error);
+            if (item.attempts >= CONFIG.retryMaxAttempts) {
+                console.error(`❌ 重试达到最大次数，放弃数据ID: ${item.recordId}`);
+                retryQueue.splice(i, 1);
+                continue;
+            }
+            item.nextRunAt = Date.now() + CONFIG.retryDelayMs;
+        }
+    }
+}
+
+
+function getUsers() {
+    try {
+        if (!fs.existsSync(USERS_FILE)) return [];
+        return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    } catch (error) {
+        console.error('读取用户失败:', error.message);
+        return [];
+    }
+}
+
+function getUserByName(username) {
+    if (!username) return null;
+    const users = getUsers();
+    return users.find(u => String(u.username || '').trim() === String(username).trim()) || null;
+}
+
+function getUserCustomers(user) {
+    if (!user) return [];
+    if (Array.isArray(user.customers) && user.customers.length > 0) {
+        return user.customers
+            .filter(c => c && c.id != null)
+            .map(c => ({
+                ...c,
+                id: String(c.id),
+                assessCustomerId: c.assessCustomerId != null ? String(c.assessCustomerId) : undefined,
+                entryid: c.entryid != null ? String(c.entryid) : undefined,
+                inputmanid: c.inputmanid != null ? String(c.inputmanid) : undefined
+            }));
+    }
+    if (user.customer && user.customer.id != null) {
+        return [{
+            ...user.customer,
+            id: String(user.customer.id),
+            assessCustomerId: user.customer.assessCustomerId != null ? String(user.customer.assessCustomerId) : undefined,
+            entryid: user.entryId != null ? String(user.entryId) : (user.customer.entryid != null ? String(user.customer.entryid) : undefined),
+            inputmanid: user.inputManId != null ? String(user.inputManId) : (user.customer.inputmanid != null ? String(user.customer.inputmanid) : undefined)
+        }];
+    }
+    return [];
+}
+
+function buildLoginProfile(user) {
+    const customers = getUserCustomers(user);
+    const defaultCustomer = customers[0] || null;
+    const { password: _, ...profile } = user;
+    profile.customers = customers;
+    profile.customer = defaultCustomer || user.customer || null;
+    profile.defaultCustomerId = defaultCustomer ? defaultCustomer.id : null;
+    profile.entryId = defaultCustomer?.entryid || user.entryId || '';
+    profile.inputManId = defaultCustomer?.inputmanid || user.inputManId || '';
+    return profile;
+}
+
+function applyUserOrderContext(orderData, user, selectedCustomerId) {
+    if (!user) return { orderData, customer: null };
+    const customers = getUserCustomers(user);
+    if (customers.length === 0) {
+        const error = new Error('该用户没有可下单的客户');
+        error.statusCode = 403;
+        throw error;
+    }
+
+    const targetId = String(selectedCustomerId || orderData.customid || customers[0].id);
+    const customer = customers.find(c => String(c.id) === targetId);
+    if (!customer) {
+        const error = new Error('当前用户无权给该客户下单');
+        error.statusCode = 403;
+        throw error;
+    }
+
+    const patched = { ...orderData };
+    patched.customid = String(customer.id);
+    if (customer.assessCustomerId) patched.assesscustomid = String(customer.assessCustomerId);
+    if (customer.entryid) patched.entryid = String(customer.entryid);
+    if (customer.inputmanid) patched.inputmanid = String(customer.inputmanid);
+
+    return { orderData: patched, customer };
+}
 
 // 创建HTTP服务器
 const server = http.createServer((req, res) => {
@@ -62,17 +205,13 @@ const server = http.createServer((req, res) => {
                     res.end(JSON.stringify({ success: false, message: '请输入用户名和密码' }));
                     return;
                 }
-                let users = [];
-                if (fs.existsSync(USERS_FILE)) {
-                    users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-                }
-                const user = users.find(u => String(u.username).trim() === String(username).trim());
+                const user = getUserByName(username);
                 if (!user || String(user.password) !== String(password)) {
                     res.writeHead(200);
                     res.end(JSON.stringify({ success: false, message: '用户名或密码错误' }));
                     return;
                 }
-                const { password: _, ...profile } = user;
+                const profile = buildLoginProfile(user);
                 res.writeHead(200);
                 res.end(JSON.stringify({ success: true, user: profile }));
             } catch (e) {
@@ -149,6 +288,20 @@ const server = http.createServer((req, res) => {
                     }
                 }
 
+                // 根据登录用户确定可下单客户并覆盖固定字段
+                const username = req.headers['x-user-name'];
+                const selectedCustomerId = req.headers['x-customer-id'];
+                const currentUser = getUserByName(username);
+                if (username && !currentUser) {
+                    res.writeHead(401);
+                    res.end(JSON.stringify({ success: false, message: '登录用户不存在或会话已失效' }));
+                    return;
+                }
+                if (currentUser) {
+                    const patched = applyUserOrderContext(orderData, currentUser, selectedCustomerId);
+                    orderData = patched.orderData;
+                }
+
                 // 数据格式转换和验证（确保所有数字字段都是字符串格式）
                 orderData = normalizeOrderData(orderData);
 
@@ -166,6 +319,7 @@ const server = http.createServer((req, res) => {
                 // 同步到海尔施ERP（异步执行，不阻塞响应）
                 syncToERP(orderData)
                     .then(result => {
+                        erpStats.successCount += 1;
                         console.log('✅ 数据已成功同步到ERP，数据ID:', record.id);
                         // 如果请求还在等待，返回成功响应
                         if (!res.headersSent) {
@@ -179,28 +333,36 @@ const server = http.createServer((req, res) => {
                         }
                     })
                     .catch(error => {
-                        console.error('⚠️ 同步到ERP失败，但数据已保存，数据ID:', record.id);
+                        erpStats.failureCount += 1;
+                        enqueueRetry(orderData, record.id, error);
+                        console.error('⚠️ 同步到ERP失败，数据ID:', record.id);
                         console.error('   错误详情:', error.message);
-                        // 即使ERP同步失败，也返回成功（数据已保存）
+                        // 严格模式下返回失败，非严格模式保持兼容
                         if (!res.headersSent) {
-                            res.writeHead(200);
+                            const statusCode = CONFIG.strictErpSync ? 502 : 200;
+                            const success = !CONFIG.strictErpSync;
+                            res.writeHead(statusCode);
                             res.end(JSON.stringify({
-                                success: true,
-                                message: '数据接收成功，但ERP同步失败（数据已保存，可稍后重试）',
+                                success,
+                                message: CONFIG.strictErpSync
+                                    ? 'ERP同步失败（严格模式），请稍后重试'
+                                    : '数据接收成功，但ERP同步失败（数据已保存，可稍后重试）',
                                 dataId: record.id,
                                 error: error.message,
                                 errorCode: error.code || 'UNKNOWN',
-                                note: '数据已保存在服务器中，可以稍后手动同步或检查ERP服务状态'
+                                strictMode: CONFIG.strictErpSync,
+                                queuedForRetry: CONFIG.retryEnabled
                             }, null, 2));
                         }
                     });
 
             } catch (error) {
                 console.error('处理请求错误:', error);
-                res.writeHead(400);
+                const statusCode = Number(error.statusCode) || 400;
+                res.writeHead(statusCode);
                 res.end(JSON.stringify({
                     success: false,
-                    message: '数据格式错误: ' + error.message
+                    message: statusCode === 400 ? ('数据格式错误: ' + error.message) : error.message
                 }));
             }
         });
@@ -250,8 +412,53 @@ const server = http.createServer((req, res) => {
             status: 'ok',
             service: '海尔施ERP数据同步服务',
             timestamp: new Date().toISOString(),
-            receivedCount: receivedData.length
+            receivedCount: receivedData.length,
+            strictErpSync: CONFIG.strictErpSync,
+            retryEnabled: CONFIG.retryEnabled,
+            retryQueueSize: retryQueue.length
         }));
+    }
+    // ERP重试队列状态
+    else if (path === '/erp/retry_queue' && req.method === 'GET') {
+        res.writeHead(200);
+        res.end(JSON.stringify({
+            success: true,
+            config: {
+                strictErpSync: CONFIG.strictErpSync,
+                retryEnabled: CONFIG.retryEnabled,
+                retryMaxAttempts: CONFIG.retryMaxAttempts,
+                retryDelayMs: CONFIG.retryDelayMs,
+                retryQueueLimit: CONFIG.retryQueueLimit
+            },
+            stats: erpStats,
+            queueSize: retryQueue.length,
+            queue: retryQueue.map(item => ({
+                recordId: item.recordId,
+                attempts: item.attempts,
+                lastError: item.lastError,
+                nextRunAt: new Date(item.nextRunAt).toISOString(),
+                createdAt: item.createdAt
+            }))
+        }, null, 2));
+    }
+    // 手动触发一次重试任务
+    else if (path === '/erp/retry_now' && req.method === 'POST') {
+        processRetryQueue()
+            .then(() => {
+                res.writeHead(200);
+                res.end(JSON.stringify({
+                    success: true,
+                    message: '已触发重试任务',
+                    queueSize: retryQueue.length
+                }));
+            })
+            .catch(error => {
+                res.writeHead(500);
+                res.end(JSON.stringify({
+                    success: false,
+                    message: error.message
+                }));
+            });
     }
     // 404
     else {
@@ -412,6 +619,12 @@ function syncToERP(orderData) {
 }
 
 // 启动服务器
+setInterval(() => {
+    processRetryQueue().catch(error => {
+        console.error('处理重试队列失败:', error.message);
+    });
+}, Math.max(3000, Math.floor(CONFIG.retryDelayMs / 2)));
+
 server.listen(CONFIG.port, () => {
     console.log('========================================');
     console.log('海尔施ERP数据同步服务已启动');
@@ -421,6 +634,8 @@ server.listen(CONFIG.port, () => {
     console.log(`查询接口: GET http://localhost:${CONFIG.port}/get_data`);
     console.log(`健康检查: GET http://localhost:${CONFIG.port}/health`);
     console.log(`目标ERP: ${CONFIG.targetUrl}`);
+    console.log(`严格模式: ${CONFIG.strictErpSync ? '开启' : '关闭'}`);
+    console.log(`重试队列: ${CONFIG.retryEnabled ? '开启' : '关闭'} (maxAttempts=${CONFIG.retryMaxAttempts}, delayMs=${CONFIG.retryDelayMs})`);
     console.log('');
     console.log('货品管理API:');
     console.log(`  获取货品: GET http://localhost:${CONFIG.port}/api/products`);
