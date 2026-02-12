@@ -4,7 +4,8 @@
     if (!isIndex) return;
     try {
         var userJson = sessionStorage.getItem('user');
-        if (!userJson || !JSON.parse(userJson).customer) {
+        const u = userJson ? JSON.parse(userJson) : null;
+        if (!u || (!u.customer && !(Array.isArray(u.customers) && u.customers.length))) {
             window.location.replace('login.html');
             return;
         }
@@ -82,6 +83,115 @@ const API_CONFIG = {
     timeout: 10000
 };
 
+
+
+let currentUser = null;
+let availableCustomers = [];
+let activeCustomer = null;
+
+let hasOrderableCustomers = true;
+
+function showNoCustomerPermission(message) {
+    hasOrderableCustomers = false;
+    activeCustomer = null;
+    const label = document.getElementById('currentUserLabel');
+    if (label) {
+        label.textContent = '当前客户：无可下单客户';
+    }
+
+    const noResults = document.getElementById('noResults');
+    const grid = document.getElementById('productsGrid');
+    const loading = document.getElementById('loading');
+    if (loading) loading.style.display = 'none';
+    if (grid) grid.style.display = 'none';
+    if (noResults) {
+        noResults.style.display = 'block';
+        noResults.innerHTML = `
+            <i class="fas fa-user-lock"></i>
+            <p>${message || '该用户没有可下单的客户'}</p>
+            <p style="font-size:12px;color:#999;margin-top:10px;">请联系管理员为当前账号配置可下单客户权限。</p>
+        `;
+    }
+
+    const checkoutBtn = document.getElementById('checkoutBtn');
+    if (checkoutBtn) checkoutBtn.disabled = true;
+
+    const customerSelector = document.getElementById('customerSelector');
+    if (customerSelector) customerSelector.style.display = 'none';
+}
+
+
+function getUserNameHeader() {
+    return currentUser && currentUser.username ? String(currentUser.username) : '';
+}
+
+function normalizeUserCustomers(user) {
+    if (!user) return [];
+    if (Array.isArray(user.customers) && user.customers.length > 0) {
+        return user.customers.map(c => ({
+            ...c,
+            id: String(c.id),
+            assessCustomerId: c.assessCustomerId != null ? String(c.assessCustomerId) : '',
+            entryid: c.entryid != null ? String(c.entryid) : (user.entryId != null ? String(user.entryId) : ''),
+            inputmanid: c.inputmanid != null ? String(c.inputmanid) : (user.inputManId != null ? String(user.inputManId) : '')
+        }));
+    }
+    if (user.customer && user.customer.id != null) {
+        return [{
+            ...user.customer,
+            id: String(user.customer.id),
+            assessCustomerId: user.customer.assessCustomerId != null ? String(user.customer.assessCustomerId) : '',
+            entryid: user.entryId != null ? String(user.entryId) : (user.customer.entryid != null ? String(user.customer.entryid) : ''),
+            inputmanid: user.inputManId != null ? String(user.inputManId) : (user.customer.inputmanid != null ? String(user.customer.inputmanid) : '')
+        }];
+    }
+    return [];
+}
+
+function applyActiveCustomer(customer) {
+    if (!customer) return;
+    activeCustomer = customer;
+    API_CONFIG.defaultValues.erpCustomerId = String(customer.id || API_CONFIG.defaultValues.erpCustomerId);
+    API_CONFIG.defaultValues.erpAssessCustomerId = String(customer.assessCustomerId || API_CONFIG.defaultValues.erpAssessCustomerId || '');
+    API_CONFIG.defaultValues.supplierId = String(customer.entryid || API_CONFIG.defaultValues.supplierId || '');
+    API_CONFIG.defaultValues.inputManId = String(customer.inputmanid || API_CONFIG.defaultValues.inputManId || '');
+}
+
+function updateCustomerUI() {
+    const label = document.getElementById('currentUserLabel');
+    if (label) {
+        const customerName = activeCustomer?.name || '未选择客户';
+        const inputMan = API_CONFIG.defaultValues.inputManId ? ' 制单人ID:' + API_CONFIG.defaultValues.inputManId : '';
+        label.textContent = '当前客户：' + customerName + inputMan;
+    }
+
+    const select = document.getElementById('customerSelector');
+    if (!select) return;
+
+    if (availableCustomers.length <= 1) {
+        select.style.display = 'none';
+        return;
+    }
+
+    select.style.display = '';
+    const current = activeCustomer ? String(activeCustomer.id) : '';
+    select.innerHTML = availableCustomers.map(c => `<option value="${c.id}">${c.name || c.id}</option>`).join('');
+    if (current) select.value = current;
+}
+
+function switchCustomer(customerId) {
+    const target = availableCustomers.find(c => String(c.id) === String(customerId));
+    if (!target) return;
+    applyActiveCustomer(target);
+    cart = [];
+    saveCart();
+    updateCartUI();
+    currentCategory = 'all';
+    document.getElementById('searchInput').value = '';
+    updateCustomerUI();
+    loadProducts();
+}
+
 // 产品数据（从API加载）
 let productsData = [];
 let categoriesData = [];
@@ -120,6 +230,11 @@ function buildCategoryCounts(products, includeManufacturer) {
 
 // 加载产品数据
 async function loadProducts() {
+    if (!hasOrderableCustomers || !activeCustomer) {
+        showNoCustomerPermission('该用户没有可下单的客户');
+        return;
+    }
+
     const loading = document.getElementById('loading');
     const grid = document.getElementById('productsGrid');
     const noResults = document.getElementById('noResults');
@@ -130,9 +245,14 @@ async function loadProducts() {
         noResults.style.display = 'none';
         
         const customerId = API_CONFIG.defaultValues.erpCustomerId || '7522';
-        const response = await fetch(`${API_CONFIG.baseUrl}/api/products?customerId=${encodeURIComponent(customerId)}`);
+        const response = await fetch(`${API_CONFIG.baseUrl}/api/products?customerId=${encodeURIComponent(customerId)}`, {
+            headers: {
+                'x-user-name': getUserNameHeader()
+            }
+        });
         if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
+            const msg = response.status === 403 ? '该用户没有可下单的客户或无权访问该客户货品' : `HTTP错误! 状态: ${response.status}`;
+            throw new Error(msg);
         }
         
         const result = await response.json();
@@ -171,7 +291,8 @@ async function loadCategories() {
     try {
         const response = await fetch(`${API_CONFIG.baseUrl}/api/categories`);
         if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
+            const msg = response.status === 403 ? '该用户没有可下单的客户或无权访问该客户货品' : `HTTP错误! 状态: ${response.status}`;
+            throw new Error(msg);
         }
         
         const result = await response.json();
@@ -221,18 +342,34 @@ function logout() {
 
 // 初始化页面
 document.addEventListener('DOMContentLoaded', function() {
-    // 显示当前登录客户与制单人信息
     try {
-        var user = JSON.parse(sessionStorage.getItem('user') || '{}');
-        var label = document.getElementById('currentUserLabel');
-        if (label) {
-            var customerName = (user.customer && user.customer.name) ? user.customer.name : '未知客户';
-            var inputMan = user.inputManId != null ? ' 制单人ID:' + user.inputManId : '';
-            label.textContent = '当前客户：' + customerName + inputMan;
-        }
-    } catch (e) {}
+        currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+    } catch (e) {
+        currentUser = {};
+    }
+
+    availableCustomers = normalizeUserCustomers(currentUser);
+    if (availableCustomers.length === 0) {
+        showNoCustomerPermission('该用户没有可下单的客户');
+    } else {
+        hasOrderableCustomers = true;
+        const defaultId = currentUser?.defaultCustomerId ? String(currentUser.defaultCustomerId) : String(availableCustomers[0].id);
+        applyActiveCustomer(availableCustomers.find(c => String(c.id) === defaultId) || availableCustomers[0]);
+        updateCustomerUI();
+    }
+
+    const customerSelector = document.getElementById('customerSelector');
+    if (customerSelector && !customerSelector._bound) {
+        customerSelector._bound = true;
+        customerSelector.addEventListener('change', function() {
+            switchCustomer(this.value);
+        });
+    }
+
     // 先加载数据
-    loadProducts();
+    if (hasOrderableCustomers) {
+        loadProducts();
+    }
     updateCartUI();
     
     // 搜索框回车事件
@@ -481,9 +618,14 @@ async function performSearch() {
         loading.style.display = 'block';
         
         const customerId = API_CONFIG.defaultValues.erpCustomerId || '7522';
-        const response = await fetch(`${API_CONFIG.baseUrl}/api/products?customerId=${encodeURIComponent(customerId)}&search=${encodeURIComponent(searchTerm)}`);
+        const response = await fetch(`${API_CONFIG.baseUrl}/api/products?customerId=${encodeURIComponent(customerId)}&search=${encodeURIComponent(searchTerm)}`, {
+            headers: {
+                'x-user-name': getUserNameHeader()
+            }
+        });
         if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
+            const msg = response.status === 403 ? '该用户没有可下单的客户或无权访问该客户货品' : `HTTP错误! 状态: ${response.status}`;
+            throw new Error(msg);
         }
         
         const result = await response.json();
@@ -707,6 +849,11 @@ function saveCart() {
 
 // 结账
 function checkout() {
+    if (!hasOrderableCustomers || !activeCustomer) {
+        showToast('该用户没有可下单的客户', 'warning');
+        return;
+    }
+
     if (cart.length === 0) {
         showToast('购物车是空的');
         return;
@@ -767,12 +914,12 @@ function buildERPOrderData(customerInfo, cartItems) {
     const erpOrderData = {
         businessType: API_CONFIG.defaultValues.businessType,
         conno: orderNo,
-        customid: API_CONFIG.defaultValues.erpCustomerId,
+        customid: (activeCustomer && activeCustomer.id) ? String(activeCustomer.id) : API_CONFIG.defaultValues.erpCustomerId,
         memo: customerInfo.notes || customerInfo.org || '', // 订单总单备注
         credate: orderDate,
-        entryid: API_CONFIG.defaultValues.supplierId,
-        inputmanid: API_CONFIG.defaultValues.inputManId,
-        assesscustomid: API_CONFIG.defaultValues.erpAssessCustomerId,
+        entryid: (activeCustomer && activeCustomer.entryid) ? String(activeCustomer.entryid) : API_CONFIG.defaultValues.supplierId,
+        inputmanid: (activeCustomer && activeCustomer.inputmanid) ? String(activeCustomer.inputmanid) : API_CONFIG.defaultValues.inputManId,
+        assesscustomid: (activeCustomer && activeCustomer.assessCustomerId) ? String(activeCustomer.assessCustomerId) : API_CONFIG.defaultValues.erpAssessCustomerId,
         detailList: detailList // 订单明细列表（必须包含）
     };
     
@@ -789,6 +936,11 @@ function buildERPOrderData(customerInfo, cartItems) {
 
 // 提交订单
 function submitOrder(event) {
+    if (!hasOrderableCustomers || !activeCustomer) {
+        showToast('该用户没有可下单的客户', 'warning');
+        return false;
+    }
+
     // 阻止表单默认提交行为和事件冒泡
     if (event) {
         event.preventDefault();
@@ -849,7 +1001,9 @@ function submitOrder(event) {
     const fetchPromise = fetch(API_CONFIG.syncUrl, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'x-user-name': getUserNameHeader(),
+            'x-customer-id': activeCustomer ? String(activeCustomer.id) : ''
         },
         body: JSON.stringify(erpOrderData)
     });
@@ -859,7 +1013,8 @@ function submitOrder(event) {
     .then(response => {
         const httpStatus = response.status;
         if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
+            const msg = response.status === 403 ? '该用户没有可下单的客户或无权访问该客户货品' : `HTTP错误! 状态: ${response.status}`;
+            throw new Error(msg);
         }
         return response.json().then(data => {
             return { httpStatus, data };

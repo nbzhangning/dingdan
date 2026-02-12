@@ -74,24 +74,106 @@ function getNextId(items) {
     return Math.max(...items.map(item => item.id || 0)) + 1;
 }
 
+// 安全数值转换（避免 NaN 写入）
+function toNumber(value, defaultValue = 0) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : defaultValue;
+}
+
+function toInt(value, defaultValue = 0) {
+    const num = parseInt(value, 10);
+    return Number.isFinite(num) ? num : defaultValue;
+}
+
+// 安全字符串转换（避免空值调用 toLowerCase 报错）
+function safeString(value) {
+    return value == null ? '' : String(value);
+}
+
+
+
+function getUserByName(username) {
+    if (!username) return null;
+    try {
+        if (!fs.existsSync(USERS_FILE)) return null;
+        const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+        return users.find(u => String(u.username || '').trim() === String(username).trim()) || null;
+    } catch (error) {
+        console.error('读取用户数据失败:', error);
+        return null;
+    }
+}
+
+function getUserCustomers(user) {
+    if (!user) return [];
+    if (Array.isArray(user.customers) && user.customers.length > 0) {
+        return user.customers.map(c => ({ ...c, id: String(c.id) }));
+    }
+    if (user.customer && user.customer.id != null) {
+        return [{
+            ...user.customer,
+            id: String(user.customer.id),
+            entryid: user.entryId || user.customer.entryid,
+            inputmanid: user.inputManId || user.customer.inputmanid
+        }];
+    }
+    return [];
+}
+
 // 货品管理API处理函数
 function handleProductsAPI(req, res, method, pathParts) {
     const products = getProducts();
 
     // GET /api/products - 获取货品（支持按客户 customerId 筛选，未设 customerId 的货品归属 7522）
     if (method === 'GET' && pathParts.length === 2) {
-        const query = new URL(req.url, `http://${req.headers.host}`).searchParams;
+        const host = req.headers.host || 'localhost';
+        const query = new URL(req.url, `http://${host}`).searchParams;
         const category = query.get('category');
         const search = query.get('search');
         const customerId = query.get('customerId');
+        const username = req.headers['x-user-name'];
 
         let result = products;
 
-        // 按客户归属筛选：传入 customerId 时只返回该客户所属货品（无 customerId 的货品视为 7522）
-        if (customerId) {
+        // 按登录用户限制可见客户范围
+        const user = getUserByName(username);
+        const userCustomers = getUserCustomers(user);
+        const allowedCustomerIds = userCustomers.map(c => String(c.id));
+
+        // 客户选择优先：query > 用户默认第一个客户 > 空
+        const effectiveCustomerId = customerId
+            ? String(customerId)
+            : (allowedCustomerIds[0] || '');
+
+        if (username && !user) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ success: false, message: '登录用户不存在或会话已失效' }));
+            return;
+        }
+
+        if (username && allowedCustomerIds.length === 0) {
+            res.writeHead(403);
+            res.end(JSON.stringify({ success: false, message: '该用户没有可下单的客户' }));
+            return;
+        }
+
+        if (allowedCustomerIds.length > 0) {
+            if (effectiveCustomerId && !allowedCustomerIds.includes(effectiveCustomerId)) {
+                res.writeHead(403);
+                res.end(JSON.stringify({ success: false, message: '无权访问该客户的货品档案' }));
+                return;
+            }
             result = result.filter(p => {
                 const pid = p.customerId != null ? String(p.customerId) : '7522';
-                return pid === String(customerId);
+                return allowedCustomerIds.includes(pid);
+            });
+        }
+
+        // 按客户归属筛选：传入 customerId 时只返回该客户所属货品（无 customerId 的货品视为 7522）
+        if (effectiveCustomerId) {
+            result = result.filter(p => {
+                const pid = p.customerId != null ? String(p.customerId) : '7522';
+                return pid === effectiveCustomerId;
             });
         }
 
@@ -104,11 +186,11 @@ function handleProductsAPI(req, res, method, pathParts) {
         if (search) {
             const searchLower = search.toLowerCase();
             result = result.filter(p =>
-                p.name.toLowerCase().includes(searchLower) ||
-                p.spec?.toLowerCase().includes(searchLower) ||
-                p.manufacturer?.toLowerCase().includes(searchLower) ||
-                p.operationCode?.toLowerCase().includes(searchLower) ||
-                p.erpGoodsId?.toLowerCase().includes(searchLower)
+                safeString(p.name).toLowerCase().includes(searchLower) ||
+                safeString(p.spec).toLowerCase().includes(searchLower) ||
+                safeString(p.manufacturer).toLowerCase().includes(searchLower) ||
+                safeString(p.operationCode).toLowerCase().includes(searchLower) ||
+                safeString(p.erpGoodsId).toLowerCase().includes(searchLower)
             );
         }
 
@@ -170,8 +252,8 @@ function handleProductsAPI(req, res, method, pathParts) {
                     category: productData.category || '',
                     categoryId: productData.categoryId || null,
                     spec: productData.spec || '',
-                    price: parseFloat(productData.price) || 0,
-                    stock: parseInt(productData.stock) || 0,
+                    price: toNumber(productData.price, 0),
+                    stock: toInt(productData.stock, 0),
                     manufacturer: productData.manufacturer || '',
                     brand: productData.brand || '', // 品牌
                     erpGoodsId: productData.erpGoodsId || '', // ERP货品ID（用于订单同步）
@@ -239,13 +321,18 @@ function handleProductsAPI(req, res, method, pathParts) {
                 if (updateData.category !== undefined) product.category = updateData.category;
                 if (updateData.categoryId !== undefined) product.categoryId = updateData.categoryId;
                 if (updateData.spec !== undefined) product.spec = updateData.spec;
-                if (updateData.price !== undefined) product.price = parseFloat(updateData.price);
-                if (updateData.stock !== undefined) product.stock = parseInt(updateData.stock);
+                if (updateData.price !== undefined) product.price = toNumber(updateData.price, product.price ?? 0);
+                if (updateData.stock !== undefined) product.stock = toInt(updateData.stock, product.stock ?? 0);
                 if (updateData.manufacturer !== undefined) product.manufacturer = updateData.manufacturer;
+                if (updateData.brand !== undefined) product.brand = updateData.brand;
                 if (updateData.erpGoodsId !== undefined) product.erpGoodsId = updateData.erpGoodsId;
+                if (updateData.operationCode !== undefined) product.operationCode = updateData.operationCode;
                 if (updateData.unit !== undefined) product.unit = updateData.unit;
                 if (updateData.description !== undefined) product.description = updateData.description;
                 if (updateData.status !== undefined) product.status = updateData.status;
+                if (updateData.customerId !== undefined && updateData.customerId !== null) {
+                    product.customerId = String(updateData.customerId);
+                }
                 product.updatedAt = new Date().toISOString();
 
                 if (saveProducts(products)) {
@@ -504,6 +591,5 @@ module.exports = {
     saveProducts,
     saveCategories
 };
-
 
 

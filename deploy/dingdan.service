@@ -1,0 +1,22 @@
+[Unit]
+Description=Dingdan ERP Sync Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/dingdan
+Environment=NODE_ENV=production
+Environment=PORT=3330
+Environment=ERP_TARGET_URL=http://172.16.24.216:5030/receive_data
+Environment=ERP_STRICT_MODE=1
+Environment=ERP_RETRY_ENABLED=1
+Environment=ERP_RETRY_MAX_ATTEMPTS=3
+Environment=ERP_RETRY_DELAY_MS=30000
+ExecStart=/usr/bin/node /opt/dingdan/server.js
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
