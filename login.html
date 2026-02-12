@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 海尔施快速下单系统</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%); }
+        .login-card { background: var(--bg-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); padding: 2.5rem; width: 100%; max-width: 400px; }
+        .login-card h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem; }
+        .login-card .sub { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .login-form .form-group { margin-bottom: 1.25rem; }
+        .login-form label { display: block; margin-bottom: 0.35rem; font-weight: 500; color: var(--text-primary); }
+        .login-form input { width: 100%; padding: 0.65rem 0.85rem; border: 1px solid var(--border-color); border-radius: var(--radius); font-size: 1rem; }
+        .login-form input:focus { outline: none; border-color: var(--primary-color); }
+        .login-form .btn-login { width: 100%; padding: 0.75rem; background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; border: none; border-radius: var(--radius); font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 0.5rem; }
+        .login-form .btn-login:hover { opacity: 0.95; }
+        .login-form .btn-login:disabled { opacity: 0.7; cursor: not-allowed; }
+        .login-error { color: var(--danger-color); font-size: 0.9rem; margin-top: 0.75rem; display: none; }
+        .login-error.show { display: block; }
+    </style>
+</head>
+<body class="login-page">
+    <div class="login-card">
+        <h1><i class="fas fa-hospital-alt"></i> 海尔施快速下单系统</h1>
+        <p class="sub">请使用您的账号登录，系统将根据账号显示对应客户与货品档案</p>
+        <form class="login-form" id="loginForm" onsubmit="return handleLogin(event)">
+            <div class="form-group">
+                <label for="username"><i class="fas fa-user"></i> 用户名</label>
+                <input type="text" id="username" name="username" required placeholder="请输入用户名" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password"><i class="fas fa-lock"></i> 密码</label>
+                <input type="password" id="password" name="password" required placeholder="请输入密码" autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn-login" id="loginBtn">登录</button>
+            <div class="login-error" id="loginError"></div>
+        </form>
+    </div>
+    <script src="config.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>
+
+
+

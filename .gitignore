@@ -1,0 +1,29 @@
+# 数据文件
+data/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 日志
+*.log
+
+
+
+
+
+
+
+
+
