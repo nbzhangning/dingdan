@@ -8,20 +8,17 @@ window.API_CONFIG_OVERRIDE = {
     // syncUrl: 'http://localhost:5030/receive_data',
 };
 
-// 客户和供应商信息配置（未登录时的默认值；登录后由登录用户覆盖）
+// 客户和供应商信息配置（未登录时的默认值；登录后由 data/users.json 对应用户覆盖）
 window.CUSTOMER_CONFIG = {
-    // 客户信息
     customer: {
         name: '温岭市第一人民医院（J）',
         id: '7522',
-        assessCustomerId: '858' // ERP考核客户ID（从Excel数据中获取）
+        assessCustomerId: '858'
     },
-    // 供应商信息
     supplier: {
         name: '浙江海尔施医疗设备有限公司',
         id: '2'
     },
-    // 制单人ID（按客户配置：温岭=9631，其他客户可在此修改）
     inputManId: '9631'
 };
 

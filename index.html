@@ -4,30 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>海尔施医疗器械试剂耗材快速下单系统</title>
-    <link rel="stylesheet" href="styles.css">
+    <script>
+        (function () {
+            try {
+                var raw = localStorage.getItem('order_user');
+                if (!raw) {
+                    window.location.replace('login.html');
+                    return;
+                }
+                var u = JSON.parse(raw);
+                if (
+                    u.isAdmin === true ||
+                    String(u.username || '')
+                        .trim()
+                        .toLowerCase() === 'admin'
+                ) {
+                    window.location.replace('admin.html');
+                }
+            } catch (e) {
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260615">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <!-- 顶部导航栏 -->
     <header class="header">
-        <div class="container">
+        <div class="container header-inner">
             <div class="logo">
                 <i class="fas fa-hospital-alt"></i>
-                <span>海尔施医疗器械试剂耗材快速下单系统</span>
+                <span class="logo-title">海尔施医疗器械试剂耗材快速下单系统</span>
             </div>
-            <div class="header-actions">
-                <div class="current-user-wrap">
-                    <span class="current-user" id="currentUserLabel">当前客户：加载中...</span>
-                    <button type="button" class="logout-btn" onclick="logout()" title="退出登录"><i class="fas fa-sign-out-alt"></i> 退出</button>
+            <div class="header-right">
+                <div class="header-row-customer">
+                    <div class="header-row-spacer" aria-hidden="true"></div>
+                    <div class="header-actions-block">
+                        <div id="currentCustomerWrap" class="current-customer-wrap" style="display:none;">
+                            <label for="currentCustomerSelect">当前下单客户:</label>
+                            <select id="currentCustomerSelect" class="current-customer-select" title="选择当前要下单的客户"></select>
+                        </div>
+                        <div class="user-info" id="headerUserInfo"></div>
+                    </div>
                 </div>
-                <div class="search-box">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="searchInput" placeholder="搜索产品名称、操作码、规格、厂家或ERP货品ID...">
-                    <button class="search-btn" onclick="performSearch()">搜索</button>
-                </div>
-                <div class="cart-icon" onclick="toggleCart()">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span class="cart-badge" id="cartBadge">0</span>
+                <div class="header-row-toolbar">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="搜索产品名称、操作码、规格、厂家或ERP货品ID...">
+                        <button type="button" class="search-btn" onclick="performSearch()">搜索</button>
+                    </div>
+                    <div class="header-toolbar-btns">
+                        <button type="button" class="header-toolbar-btn header-cart-btn" onclick="toggleCart()" title="购物车">
+                            <i class="fas fa-shopping-cart"></i>
+                            <span>购物车</span>
+                            <span class="cart-badge" id="cartBadge">0</span>
+                        </button>
+                        <button type="button" class="header-toolbar-btn" onclick="showChangePasswordModal()" title="修改登录密码">
+                            <i class="fas fa-key"></i> 修改密码
+                        </button>
+                        <a class="header-toolbar-btn" href="html/操作手册.html" target="_blank" rel="noopener" title="操作手册">
+                            <i class="fas fa-question-circle"></i> 帮助
+                        </a>
+                        <button type="button" class="header-toolbar-btn" id="logoutBtn" onclick="logout()" title="退出登录">
+                            <i class="fas fa-sign-out-alt"></i> 退出
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -50,11 +92,27 @@
                     <button class="quick-btn" onclick="clearCart()">
                         <i class="fas fa-trash"></i> 清空购物车
                     </button>
+                    <button class="quick-btn" onclick="exportCurrentMenuToExcel()">
+                        <i class="fas fa-file-excel"></i> 导出菜单
+                    </button>
+                    <button class="quick-btn" onclick="triggerMenuQtyImport()">
+                        <i class="fas fa-file-import"></i> 导入数量
+                    </button>
+                    <input type="file" id="menuQtyImportFile" accept=".xlsx,.xls" style="display:none">
                     <button class="quick-btn" onclick="exportOrder()">
                         <i class="fas fa-file-export"></i> 导出订单
                     </button>
                     <button class="quick-btn" onclick="showOrderHistory()">
                         <i class="fas fa-history"></i> 历史订单
+                    </button>
+                    <a class="quick-btn" href="vendor-certs.html" style="text-decoration:none;">
+                        <i class="fas fa-id-card"></i> 厂商供应商证照
+                    </a>
+                    <a id="invManagementBtn" class="quick-btn" href="inventory.html" style="text-decoration:none;display:none;">
+                        <i class="fas fa-boxes"></i> 客户进销存管理
+                    </a>
+                    <button class="quick-btn" onclick="showSettings()">
+                        <i class="fas fa-cog"></i> 显示设置
                     </button>
                 </div>
             </aside>
@@ -72,10 +130,31 @@
                         </select>
                     </div>
                 </div>
+                <div class="product-files-bar" id="productFilesBar">
+                    <div class="product-files-select-actions">
+                        <button type="button" class="btn-secondary btn-sm" onclick="selectAllProductsForDownload()">
+                            <i class="fas fa-check-square"></i> 全选
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="deselectAllProductsForDownload()">
+                            <i class="fas fa-square"></i> 取消全选
+                        </button>
+                        <span class="product-files-selected-count" id="productFilesSelectedCount">已选 0 个货品</span>
+                    </div>
+                    <div class="product-files-catalog-types" id="productFilesCatalogTypes">
+                        <span class="product-files-catalog-label">资料类型：</span>
+                        <label class="catalog-type-label"><input type="checkbox" class="catalog-type-cb" value="2300015034521675" checked> 产品注册证</label>
+                        <label class="catalog-type-label"><input type="checkbox" class="catalog-type-cb" value="2300015034521671" checked> 实物照片</label>
+                        <label class="catalog-type-label"><input type="checkbox" class="catalog-type-cb" value="2300015034521666" checked> 说明书</label>
+                    </div>
+                    <button type="button" class="btn-primary btn-sm" id="productFilesDownloadBtn" onclick="downloadSelectedProductFiles()">
+                        <i class="fas fa-download"></i> 下载资料
+                    </button>
+                </div>
                 
                 <div class="products-grid" id="productsGrid">
                     <!-- 产品卡片将通过JavaScript动态加载 -->
                 </div>
+                <div id="productPagination" class="product-pagination" style="display:none;"></div>
                 
                 <div class="loading" id="loading" style="display: none;">
                     <i class="fas fa-spinner fa-spin"></i> 加载中...
@@ -106,12 +185,17 @@
             <div class="cart-items" id="cartItems"></div>
         </div>
         <div class="cart-footer">
+            <div class="form-group cart-memo-group">
+                <label for="cartOrderMemo"><i class="fas fa-comment"></i> 订单总备注 (memo)</label>
+                <textarea id="cartOrderMemo" rows="2" placeholder="整单说明，如交货要求、联系人等（选填）"
+                    onchange="saveCartOrderMemo()" oninput="saveCartOrderMemo()"></textarea>
+            </div>
             <div class="cart-total">
                 <span>总计：</span>
                 <span class="total-price" id="totalPrice">¥0.00</span>
             </div>
-            <button class="checkout-btn" onclick="checkout()" id="checkoutBtn" disabled>
-                <i class="fas fa-check"></i> 快速下单
+            <button type="button" class="checkout-btn" onclick="submitOrder(event)" id="submitOrderBtn" disabled>
+                <i class="fas fa-paper-plane"></i> 提交订单
             </button>
         </div>
     </aside>
@@ -128,24 +212,8 @@
             <div class="modal-body">
                 <form id="orderForm" onsubmit="event.preventDefault(); submitOrder(event); return false;">
                     <div class="form-group">
-                        <label><i class="fas fa-user"></i> 联系人姓名 *</label>
-                        <input type="text" id="customerName" required placeholder="请输入您的姓名">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-phone"></i> 联系电话 *</label>
-                        <input type="tel" id="customerPhone" required placeholder="请输入联系电话">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-building"></i> 单位/机构 *</label>
-                        <input type="text" id="customerOrg" required placeholder="请输入单位或机构名称">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-map-marker-alt"></i> 收货地址 *</label>
-                        <textarea id="customerAddress" required rows="3" placeholder="请输入详细收货地址"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-comment"></i> 备注信息</label>
-                        <textarea id="orderNotes" rows="3" placeholder="其他需要说明的信息（选填）"></textarea>
+                        <label><i class="fas fa-building"></i> 订单客户名称</label>
+                        <div id="orderCustomerName" class="order-customer-display" style="padding:0.5rem 0.75rem;background:var(--bg-secondary);border-radius:var(--radius);color:var(--text-primary);"></div>
                     </div>
                     <div class="order-summary">
                         <h4>订单明细</h4>
@@ -155,7 +223,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary" onclick="closeModal()">取消</button>
-                <button type="button" class="btn-primary" onclick="submitOrder(event)">
+                <button type="button" id="submitOrderBtn" class="btn-primary" onclick="submitOrder(event)">
                     <i class="fas fa-paper-plane"></i> 提交订单
                 </button>
             </div>
@@ -193,7 +261,206 @@
         </div>
     </div>
 
+    <!-- 显示设置模态框 -->
+    <div class="modal-overlay" id="settingsModal" style="display: none;">
+        <div class="modal-content" style="max-width: 1000px; max-height: 90vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-cog"></i> 显示设置</h3>
+                <button class="close-btn" onclick="closeSettings()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem;">
+                <!-- 标签页 -->
+                <div class="settings-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--border-color);">
+                    <button class="settings-tab active" onclick="switchSettingsTab('products')" id="tab-products">
+                        <i class="fas fa-box"></i> 货品屏蔽管理
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('categories')" id="tab-categories">
+                        <i class="fas fa-list"></i> 分类显示顺序
+                    </button>
+                </div>
+
+                <!-- 货品屏蔽管理标签页 -->
+                <div id="settings-tab-products" class="settings-tab-content">
+                    <div style="margin-bottom: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center;">
+                            <input type="text" id="productSearchInput" placeholder="搜索货品名称、分类、厂家..." 
+                                   style="flex: 1; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius);"
+                                   onkeyup="filterProductsInSettings()">
+                            <button class="btn-secondary" onclick="selectAllProducts()">
+                                <i class="fas fa-check-square"></i> 全选
+                            </button>
+                            <button class="btn-secondary" onclick="deselectAllProducts()">
+                                <i class="fas fa-square"></i> 取消全选
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn-primary" onclick="hideSelectedProducts()">
+                                <i class="fas fa-eye-slash"></i> 屏蔽选中货品
+                            </button>
+                            <button class="btn-primary" onclick="showSelectedProducts()">
+                                <i class="fas fa-eye"></i> 显示选中货品
+                            </button>
+                        </div>
+                    </div>
+                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.5rem;">
+                        <div id="productsListInSettings">
+                            <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                <i class="fas fa-spinner fa-spin"></i> 加载中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 分类显示顺序标签页 -->
+                <div id="settings-tab-categories" class="settings-tab-content" style="display: none;">
+                    <div style="margin-bottom: 1rem;">
+                        <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius); margin-bottom: 1rem; border-left: 4px solid var(--primary-color);">
+                            <p style="margin: 0; font-weight: 600; color: var(--text-primary);">
+                                <i class="fas fa-user"></i> 当前客户: <span id="currentCustomerNameInSettings">加载中...</span>
+                            </p>
+                            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: var(--text-secondary);">
+                                <i class="fas fa-info-circle"></i> 以下设置仅对当前客户生效，不同客户的分类顺序相互独立。
+                            </p>
+                        </div>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                            <i class="fas fa-grip-vertical"></i> 拖拽分类项可调整显示顺序，排在前面的分类会优先显示在下拉菜单中。
+                        </p>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn-primary" onclick="saveCategoryOrder()">
+                                <i class="fas fa-save"></i> 保存顺序
+                            </button>
+                            <button class="btn-secondary" onclick="resetCategoryOrder()">
+                                <i class="fas fa-undo"></i> 重置
+                            </button>
+                        </div>
+                    </div>
+                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.5rem;">
+                        <div id="categoryOrderList">
+                            <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                <i class="fas fa-spinner fa-spin"></i> 加载中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeSettings()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改密码 -->
+    <div class="modal-overlay" id="changePasswordModal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-key"></i> 修改登录密码</h3>
+                <button type="button" class="close-btn" onclick="closeChangePasswordModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:1rem;color:var(--text-secondary);">当前账号：<strong id="changePasswordUsername"></strong></p>
+                <form id="changePasswordForm" onsubmit="event.preventDefault(); submitChangePassword();">
+                    <div class="form-group">
+                        <label>当前密码</label>
+                        <input type="password" id="cpCurrentPassword" required autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label>新密码（至少 6 位）</label>
+                        <input type="password" id="cpNewPassword" required minlength="6" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label>确认新密码</label>
+                        <input type="password" id="cpConfirmPassword" required minlength="6" autocomplete="new-password">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+                <button type="button" class="btn-primary" id="cpSubmitBtn" onclick="submitChangePassword()">确认修改</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户管理（仅 admin） -->
+    <div class="modal-overlay" id="userAdminModal" style="display: none;">
+        <div class="modal-content" style="max-width: 960px; max-height: 92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-users-cog"></i> 用户管理</h3>
+                <button type="button" class="close-btn" onclick="closeUserAdminModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <div class="form-group" style="margin-bottom:1rem;padding:0.75rem;background:var(--bg-secondary);border-radius:var(--radius);">
+                    <label><i class="fas fa-shield-alt"></i> 管理员密码验证（列表/保存前需填写）</label>
+                    <input type="password" id="adminAuthPassword" placeholder="请输入当前 admin 登录密码" autocomplete="current-password">
+                </div>
+                <div class="settings-tabs" style="margin-bottom:1rem;">
+                    <button type="button" class="settings-tab active" id="adminTabBtn-list" onclick="switchAdminTab('list')">用户列表</button>
+                    <button type="button" class="settings-tab" id="adminTabBtn-edit" onclick="switchAdminTab('edit')">编辑用户</button>
+                    <button type="button" class="settings-tab" id="adminTabBtn-create" onclick="switchAdminTab('create')">新增用户</button>
+                </div>
+                <div id="adminTab-list">
+                    <button type="button" class="btn-secondary" style="margin-bottom:0.75rem;" onclick="loadAdminUserList()">
+                        <i class="fas fa-sync"></i> 刷新列表
+                    </button>
+                    <div id="adminUserList" style="max-height:420px;overflow:auto;"></div>
+                </div>
+                <div id="adminTab-edit" style="display:none;">
+                    <input type="hidden" id="editUserId">
+                    <div class="form-group"><label>用户名</label><input type="text" id="editUsername" autocomplete="username"></div>
+                    <div class="form-group"><label>新密码（留空则不修改）</label><input type="password" id="editPassword" autocomplete="new-password"></div>
+                    <div class="form-group"><label>客户ID</label><input type="text" id="editCustomerId"></div>
+                    <div class="form-group"><label>客户名称</label><input type="text" id="editCustomerName"></div>
+                    <div class="form-group"><label>考核客户ID</label><input type="text" id="editAssessCustomerId"></div>
+                    <div class="form-group"><label>供应商ID</label><input type="text" id="editSupplierId"></div>
+                    <div class="form-group"><label>供应商名称</label><input type="text" id="editSupplierName"></div>
+                    <div class="form-group"><label>制单人ID</label><input type="text" id="editInputManId"></div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="editIsAdmin"> 管理员账号</label>
+                        <label style="margin-left:1rem;"><input type="checkbox" id="editIsDisabled"> 禁用账户</label>
+                    </div>
+                    <div class="form-group">
+                        <label>多客户 JSON（customers_json，选填）</label>
+                        <textarea id="editCustomersJson" rows="5" placeholder='[{"name":"…","id":"7522","supplierId":"2","inputManId":"9631"}]' style="width:100%;font-family:monospace;font-size:0.85rem;"></textarea>
+                    </div>
+                    <button type="button" class="btn-primary" onclick="saveAdminUserEdit()"><i class="fas fa-save"></i> 保存修改</button>
+                </div>
+                <div id="adminTab-create" style="display:none;">
+                    <form id="createUserForm">
+                        <div class="form-group"><label>用户名 *</label><input type="text" id="newUsername" required></div>
+                        <div class="form-group"><label>初始密码 *（至少6位）</label><input type="password" id="newPassword" required minlength="6"></div>
+                        <div class="form-group"><label>客户ID</label><input type="text" id="newCustomerId"></div>
+                        <div class="form-group"><label>客户名称</label><input type="text" id="newCustomerName"></div>
+                        <div class="form-group"><label>考核客户ID</label><input type="text" id="newAssessCustomerId"></div>
+                        <div class="form-group"><label>供应商ID</label><input type="text" id="newSupplierId"></div>
+                        <div class="form-group"><label>供应商名称</label><input type="text" id="newSupplierName"></div>
+                        <div class="form-group"><label>制单人ID</label><input type="text" id="newInputManId"></div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="newIsAdmin"> 管理员账号</label>
+                            <label style="margin-left:1rem;"><input type="checkbox" id="newIsDisabled"> 创建后即为禁用</label>
+                        </div>
+                        <div class="form-group">
+                            <label>多客户 JSON（选填）</label>
+                            <textarea id="newCustomersJson" rows="4" style="width:100%;font-family:monospace;font-size:0.85rem;"></textarea>
+                        </div>
+                    </form>
+                    <button type="button" class="btn-primary" onclick="saveAdminUserCreate()"><i class="fas fa-user-plus"></i> 创建用户</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeUserAdminModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="apiAuthClient.js?v=20260605"></script>
     <script src="config.js"></script>
-    <script src="script.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="script.js?v=20260615"></script>
+    <script src="userAccount.js?v=20260602a"></script>
 </body>
 </html>

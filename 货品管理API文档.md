@@ -322,5 +322,3 @@ fetch('http://localhost:3330/api/products/1', {
 
 
 
-
-

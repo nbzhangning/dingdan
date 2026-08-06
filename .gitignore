@@ -1,5 +1,14 @@
-# 数据文件
+# 数据与数据库
 data/
+*.sqlite
+*.db
+
+# 业务 Excel（含价格，勿提交）
+*.xlsx
+
+# 备份与压缩包
+*.backup
+*.zip
 
 # Node.js
 node_modules/
@@ -19,11 +28,5 @@ Thumbs.db
 # 日志
 *.log
 
-
-
-
-
-
-
-
-
+# 环境变量（含 Oracle 密码）
+.env

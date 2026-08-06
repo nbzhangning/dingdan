@@ -6,7 +6,24 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "import-excel": "node importFromExcel.js"
+    "import-excel": "node scripts/importExcelToCustomer.js",
+    "import-excel-to-customer": "node scripts/importExcelToCustomer.js",
+    "import-sanmen": "node scripts/importExcelToCustomer.js 12022 \"货品价格管理_三门新.xlsx\"",
+    "import-prices-20260519": "node scripts/importExcelToCustomer.js \"货品价格管理_20260519093746.xlsx\"",
+    "setup-customer": "node scripts/setup-new-customer.js",
+    "add-user": "node scripts/add-user.js",
+    "check-user": "node scripts/check-user.js",
+    "list-users": "node scripts/list-users.js",
+    "check-products": "node scripts/check-products.js",
+    "sync-products": "node scripts/sync-products-to-db.js",
+    "verify-customer": "node scripts/verify-multi-customer.js",
+    "import-putuo": "node scripts/import-putuo-customer.js",
+    "health": "node scripts/health-check.js",
+    "check": "node scripts/monitor.js",
+    "test-oracle": "node scripts/test-oracle.js",
+    "set-user-notify": "node scripts/set-user-notify.js",
+    "test-wecom-notify": "node scripts/test-order-notify.js",
+    "download-files": "node download.js"
   },
   "keywords": [
     "erp",
@@ -19,9 +36,11 @@
     "node": ">=12.0.0"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
+    "axios": "^1.16.1",
+    "bcryptjs": "^3.0.3",
+    "oracledb": "^6.10.0",
+    "sqlite3": "^5.1.7",
     "xlsx": "^0.18.5"
   }
 }
-
-
-

@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>伙伴云文件批量下载工具 - 供应商文件管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f2f6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 24px 28px;
+        }
+
+        .header h1 {
+            font-size: 26px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header p {
+            opacity: 0.85;
+            font-size: 14px;
+        }
+
+        .filter-bar {
+            padding: 20px 28px;
+            background: #f8f9fc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .filter-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 6px;
+        }
+
+        .filter-group input, .filter-group select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .filter-group input:focus, .filter-group select:focus {
+            outline: none;
+            border-color: #2a5298;
+            box-shadow: 0 0 0 3px rgba(42,82,152,0.1);
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2a5298;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1e3c72;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+
+        .btn-success {
+            background: #38a169;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #2f855a;
+        }
+
+        .btn-danger {
+            background: #e53e3e;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c53030;
+        }
+
+        .btn-warning {
+            background: #d69e2e;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #b7791f;
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 12px;
+        }
+
+        .toolbar {
+            padding: 16px 28px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .batch-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .stats {
+            font-size: 14px;
+            color: #4a5568;
+            background: #edf2f7;
+            padding: 6px 14px;
+            border-radius: 20px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: calc(100vh - 380px);
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #2d3748;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-size: 13px;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .checkbox-col {
+            width: 40px;
+            text-align: center;
+        }
+
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+            font-size: 13px;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .file-name {
+            color: #2a5298;
+            cursor: pointer;
+            text-decoration: none;
+            flex: 1;
+            word-break: break-all;
+        }
+
+        .file-name:hover {
+            color: #1e3c72;
+            text-decoration: underline;
+        }
+
+        .file-type {
+            font-size: 10px;
+            color: #718096;
+            background: #edf2f7;
+            padding: 2px 8px;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .file-size {
+            font-size: 11px;
+            color: #a0aec0;
+            white-space: nowrap;
+        }
+
+        .pagination {
+            padding: 20px 28px;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            border-top: 1px solid #e2e8f0;
+            background: white;
+            flex-wrap: wrap;
+        }
+
+        .pagination button {
+            padding: 8px 14px;
+            border: 1px solid #cbd5e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .pagination button:hover {
+            background: #edf2f7;
+            border-color: #2a5298;
+        }
+
+        .pagination button.active {
+            background: #2a5298;
+            color: white;
+            border-color: #2a5298;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .status-bar {
+            padding: 12px 28px;
+            background: #f7fafc;
+            border-top: 1px solid #e2e8f0;
+            font-size: 13px;
+            color: #4a5568;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .download-progress {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 20px;
+            min-width: 340px;
+            z-index: 1000;
+            display: none;
+            border: 1px solid #e2e8f0;
+        }
+
+        .download-progress.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 14px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #38a169;
+            transition: width 0.3s ease;
+        }
+
+        .progress-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            color: #718096;
+        }
+
+        .selected-count {
+            background: #2a5298;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+
+        .company-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        @media (max-width: 768px) {
+            .filter-bar {
+                flex-direction: column;
+            }
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .batch-actions {
+                justify-content: flex-start;
+            }
+            th, td {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                📁 伙伴云文件批量下载工具
+                <span style="font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px;">供应商文件管理</span>
+            </h1>
+            <p>表格 ID: 2100000062488835 | 支持按企业名称筛选 | 支持多文件勾选批量下载</p>
+        </div>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>🏢 企业名称</label>
+                <input type="text" id="companyNameFilter" placeholder="输入企业名称进行筛选..." autocomplete="off">
+            </div>
+            <div class="filter-group">
+                <label>📄 文件类型</label>
+                <select id="fileTypeFilter">
+                    <option value="">全部</option>
+                    <option value="pdf">PDF 文档</option>
+                    <option value="doc">Word 文档</option>
+                    <option value="docx">Word 文档</option>
+                    <option value="xls">Excel 表格</option>
+                    <option value="xlsx">Excel 表格</option>
+                    <option value="jpg">JPEG 图片</option>
+                    <option value="png">PNG 图片</option>
+                    <option value="zip">压缩包</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="searchData()">🔍 查询</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">🔄 重置</button>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="batch-actions">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                <label for="selectAll" style="cursor: pointer;">全选当前页</label>
+                <button class="btn btn-success btn-sm" onclick="downloadSelected()">⬇️ 下载选中文件</button>
+                <button class="btn btn-danger btn-sm" onclick="clearSelection()">🗑 清除选中</button>
+                <span id="selectedBadge" class="selected-count" style="display: none;">已选 0 个文件</span>
+            </div>
+            <div class="stats" id="stats">共 0 条数据</div>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col"><input type="checkbox" id="headerSelectAll" onchange="toggleSelectAll()"></th>
+                        <th style="width: 20%;">企业名称</th>
+                        <th style="width: 45%;">文件列表</th>
+                        <th style="width: 15%;">ERP客户ID</th>
+                        <th style="width: 10%;">有效期至</th>
+                        <th style="width: 10%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="6" class="loading">⏳ 加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+
+        <div class="status-bar">
+            <span>✅ 状态: 就绪</span>
+            <span>📊 每页显示: 20 条</span>
+            <span>🔗 文件链接有效期: 1小时</span>
+        </div>
+    </div>
+
+    <div class="download-progress" id="downloadProgress">
+        <div class="progress-title" id="progressTitle">准备下载</div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="progress-text" id="progressText">0 / 0</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // ============ 配置 ============
+        const API_BASE = 'https://api.huoban.com/openapi/v1';
+        const ACCESS_TOKEN = '8yKQZRAel4SZBK6nuhYLyo0xfnVifyAPaZwsoJcV';
+        const TABLE_ID = '2100000062488835';
+
+        // 字段ID映射
+        const FIELDS = {
+            COMPANY_NAME: '2200000604864735',      // 企业名称
+            ATTACHMENT: '2200000505833974',        // 文件字段
+            ERP_CUSTOMER_ID: '2200000592428113',   // ERP客户ID
+            EXPIRY_DATE: '2200000589575199',       // 有效期至
+            EXTERNAL: '2200000505833971',          // 对外
+            MAIN_DIR: '2200000505833972',          // 主目录
+            SUB_DIR: '2200000505833973'            // 子目录
+        };
+
+        // 筛选条件值
+        const FILTER_VALUES = {
+            MAIN_DIR_IDS: ['1'],
+            SUB_DIR_IDS: ['2300015034521688', '2300015034521690', '2300015034521689', '2300016549364773', '2300016549380177'],
+            EXTERNAL_ID: '1',
+            ERP_CUSTOMER_ID: '10936'
+        };
+
+        // 全局变量
+        let currentPage = 1;
+        let pageSize = 20;
+        let totalPages = 0;
+        let totalRecords = 0;
+        let currentData = [];
+        let selectedFiles = new Map(); // key: `${recordId}_${fileId}`, value: { name, url }
+
+        // ============ 构建筛选条件 ============
+        function buildFilter(companyName = '', fileType = '') {
+            const andConditions = [
+                { "field": FIELDS.ATTACHMENT, "query": { "em": false } },
+                { "field": FIELDS.MAIN_DIR, "query": { "in": FILTER_VALUES.MAIN_DIR_IDS } },
+                { "field": FIELDS.SUB_DIR, "query": { "in": FILTER_VALUES.SUB_DIR_IDS } },
+                { "field": FIELDS.EXTERNAL, "query": { "in": [FILTER_VALUES.EXTERNAL_ID] } },
+                { "field": FIELDS.ERP_CUSTOMER_ID, "query": { "in": [FILTER_VALUES.ERP_CUSTOMER_ID] } }
+            ];
+
+            if (companyName && companyName.trim()) {
+                andConditions.push({
+                    "field": FIELDS.COMPANY_NAME,
+                    "query": { "in": [companyName.trim()] }
+                });
+            }
+
+            return { "and": andConditions };
+        }
+
+        // ============ 查询数据 ============
+        async function searchData(page = 1) {
+            currentPage = page;
+            const companyName = document.getElementById('companyNameFilter').value;
+            const fileType = document.getElementById('fileTypeFilter').value;
+            const filter = buildFilter(companyName, fileType);
+
+            const payload = {
+                table_id: TABLE_ID,
+                filter: filter,
+                limit: pageSize,
+                offset: (page - 1) * pageSize,
+                order_by: [{ "sort": "asc", "field": "2200000505833982" }]
+            };
+
+            document.getElementById('stats').innerHTML = '⏳ 加载中...';
+            document.getElementById('tableBody').innerHTML = '<tr><td colspan="6" class="loading">⏳ 加载中...</td></tr>';
+
+            try {
+                const response = await axios.post(
+                    `${API_BASE}/item/list`,
+                    payload,
+                    { headers: { 'Open-Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
+                );
+
+                if (response.data.code === 0) {
+                    currentData = response.data.data.items || [];
+                    totalRecords = response.data.data.filtered || currentData.length;
+                    totalPages = Math.ceil(totalRecords / pageSize);
+
+                    renderTable();
+                    renderPagination();
+                    updateStats();
+                } else {
+                    showError('查询失败: ' + response.data.message);
+                }
+            } catch (error) {
+                console.error('查询失败:', error);
+                showError('查询失败: ' + (error.response?.data?.message || error.message));
+            }
+        }
+
+        // ============ 渲染表格 ============
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+
+            if (!currentData || currentData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="loading">📭 暂无数据</td></tr>';
+                return;
+            }
+
+            // 获取文件类型筛选
+            const fileTypeFilter = document.getElementById('fileTypeFilter').value;
+
+            tbody.innerHTML = currentData.map(record => {
+                const recordId = record.item_id;
+                const companyName = record.fields[FIELDS.COMPANY_NAME] || '-';
+                const erpCustomerId = record.fields[FIELDS.ERP_CUSTOMER_ID] || '-';
+                const expiryDate = record.fields[FIELDS.EXPIRY_DATE] || '-';
+                let attachments = record.fields[FIELDS.ATTACHMENT] || [];
+
+                // 文件类型筛选
+                if (fileTypeFilter) {
+                    attachments = attachments.filter(file => {
+                        const ext = (file.name || '').split('.').pop().toLowerCase();
+                        return ext === fileTypeFilter.toLowerCase();
+                    });
+                }
+
+                if (attachments.length === 0) {
+                    return ''; // 筛选后无文件的不显示
+                }
+
+                const allFileIds = attachments.map(f => f.file_id);
+                const allSelected = allFileIds.every(id => selectedFiles.has(`${recordId}_${id}`));
+
+                // 生成文件列表HTML
+                const filesHtml = attachments.map(file => {
+                    const fileId = file.file_id;
+                    const fileName = file.name || '未知文件';
+                    const fileExt = fileName.split('.').pop().toUpperCase();
+                    const fileSize = file.size ? (file.size / 1024).toFixed(1) + ' KB' : '';
+                    const isChecked = selectedFiles.has(`${recordId}_${fileId}`);
+                    const fileUrl = file.link?.source || '';
+
+                    return `
+                        <div class="file-item">
+                            <input type="checkbox" class="file-checkbox"
+                                   data-record-id="${recordId}"
+                                   data-file-id="${fileId}"
+                                   data-file-name="${fileName.replace(/'/g, "\\'")}"
+                                   data-file-url="${fileUrl}"
+                                   ${isChecked ? 'checked' : ''}
+                                   onchange="toggleFileSelect('${recordId}', '${fileId}', '${fileName.replace(/'/g, "\\'")}', '${fileUrl}')">
+                            <span class="file-name" onclick="downloadSingleFile('${fileId}', '${fileName.replace(/'/g, "\\'")}', '${fileUrl}')" title="点击下载">${fileName}</span>
+                            ${fileExt ? `<span class="file-type">${fileExt}</span>` : ''}
+                            ${fileSize ? `<span class="file-size">${fileSize}</span>` : ''}
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <tr>
+                        <td class="checkbox-col">
+                            <input type="checkbox" class="record-checkbox"
+                                   data-record-id="${recordId}"
+                                   data-attachments='${JSON.stringify(attachments.map(f => ({ file_id: f.file_id, name: f.name, url: f.link?.source })))}'
+                                   ${allSelected ? 'checked' : ''}
+                                   onchange="toggleRecordSelect(this)">
+                        </td>
+                        <td><span class="company-name">${escapeHtml(companyName)}</span></td>
+                        <td class="file-list">${filesHtml}</td>
+                        <td>${escapeHtml(erpCustomerId)}</td>
+                        <td>${escapeHtml(expiryDate)}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="downloadRecordFiles('${recordId}')" style="background:#4a5568;">📥 全部</button>
+                        </td>
+                    </tr>
+                `;
+            }).filter(row => row !== '').join('');
+
+            if (tbody.innerHTML === '') {
+                tbody.innerHTML = '<tr><td colspan="6" class="loading">📭 当前筛选条件下无文件数据</td></tr>';
+            }
+
+            updateSelectAllHeader();
+        }
+
+        // ============ 切换单个文件选择 ============
+        function toggleFileSelect(recordId, fileId, fileName, fileUrl) {
+            const key = `${recordId}_${fileId}`;
+
+            if (selectedFiles.has(key)) {
+                selectedFiles.delete(key);
+            } else {
+                selectedFiles.set(key, { name: fileName, url: fileUrl, recordId: recordId });
+            }
+
+            updateStats();
+            updateSelectAllHeader();
+        }
+
+        // ============ 切换整行记录选择 ============
+        function toggleRecordSelect(checkbox) {
+            const recordId = checkbox.dataset.recordId;
+            const attachments = JSON.parse(checkbox.dataset.attachments);
+            const isChecked = checkbox.checked;
+
+            for (const file of attachments) {
+                const key = `${recordId}_${file.file_id}`;
+                if (isChecked) {
+                    if (!selectedFiles.has(key)) {
+                        selectedFiles.set(key, { name: file.name, url: file.url, recordId: recordId });
+                    }
+                } else {
+                    selectedFiles.delete(key);
+                }
+            }
+
+            renderTable();
+            updateStats();
+        }
+
+        // ============ 全选/取消全选当前页 ============
+        function toggleSelectAll() {
+            const isChecked = document.getElementById('selectAll').checked;
+
+            for (const record of currentData) {
+                const recordId = record.item_id;
+                const attachments = record.fields[FIELDS.ATTACHMENT] || [];
+
+                for (const file of attachments) {
+                    const key = `${recordId}_${file.file_id}`;
+                    if (isChecked) {
+                        if (!selectedFiles.has(key)) {
+                            selectedFiles.set(key, { name: file.name, url: file.link?.source, recordId: recordId });
+                        }
+                    } else {
+                        selectedFiles.delete(key);
+                    }
+                }
+            }
+
+            renderTable();
+            updateStats();
+        }
+
+        // ============ 清除所有选中 ============
+        function clearSelection() {
+            selectedFiles.clear();
+            renderTable();
+            updateStats();
+        }
+
+        // ============ 更新统计信息 ============
+        function updateStats() {
+            const totalFiles = selectedFiles.size;
+            const statsSpan = document.getElementById('stats');
+            const selectedBadge = document.getElementById('selectedBadge');
+
+            statsSpan.innerHTML = `共 ${totalRecords} 条数据，当前第 ${currentPage}/${totalPages} 页`;
+
+            if (totalFiles > 0) {
+                selectedBadge.style.display = 'inline-block';
+                selectedBadge.innerHTML = `✅ 已选 ${totalFiles} 个文件`;
+            } else {
+                selectedBadge.style.display = 'none';
+            }
+        }
+
+        // ============ 更新全选表头状态 ============
+        function updateSelectAllHeader() {
+            // 计算当前页有多少文件
+            let currentPageFiles = 0;
+            let currentPageSelected = 0;
+
+            for (const record of currentData) {
+                const attachments = record.fields[FIELDS.ATTACHMENT] || [];
+                for (const file of attachments) {
+                    currentPageFiles++;
+                    if (selectedFiles.has(`${record.item_id}_${file.file_id}`)) {
+                        currentPageSelected++;
+                    }
+                }
+            }
+
+            const selectAllCheckbox = document.getElementById('selectAll');
+            const headerSelectAll = document.getElementById('headerSelectAll');
+            const isAllSelected = currentPageFiles > 0 && currentPageSelected === currentPageFiles;
+
+            if (selectAllCheckbox) selectAllCheckbox.checked = isAllSelected;
+            if (headerSelectAll) headerSelectAll.checked = isAllSelected;
+        }
+
+        // ============ 下载选中的文件 ============
+        async function downloadSelected() {
+            if (selectedFiles.size === 0) {
+                alert('请先选择要下载的文件');
+                return;
+            }
+
+            const filesToDownload = Array.from(selectedFiles.values()).filter(f => f.url);
+
+            if (filesToDownload.length === 0) {
+                alert('没有找到可下载的文件链接');
+                return;
+            }
+
+            await batchDownload(filesToDownload);
+        }
+
+        // ============ 下载单个文件 ============
+        async function downloadSingleFile(fileId, fileName, fileUrl) {
+            if (!fileUrl) {
+                alert('文件链接无效');
+                return;
+            }
+            await batchDownload([{ file_id: fileId, name: fileName, url: fileUrl }]);
+        }
+
+        // ============ 下载某条记录的所有文件 ============
+        async function downloadRecordFiles(recordId) {
+            const record = currentData.find(r => r.item_id === recordId);
+            if (!record) return;
+
+            const attachments = record.fields[FIELDS.ATTACHMENT] || [];
+            const filesToDownload = attachments.map(file => ({
+                file_id: file.file_id,
+                name: file.name,
+                url: file.link?.source
+            })).filter(f => f.url);
+
+            if (filesToDownload.length === 0) {
+                alert('该记录没有可下载的文件');
+                return;
+            }
+
+            await batchDownload(filesToDownload);
+        }
+
+        // ============ 批量下载 ============
+        async function batchDownload(files) {
+            const progressDiv = document.getElementById('downloadProgress');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const progressTitle = document.getElementById('progressTitle');
+
+            progressTitle.innerText = `📥 正在下载 ${files.length} 个文件...`;
+            progressDiv.classList.add('show');
+            progressFill.style.width = '0%';
+            progressText.innerText = `0 / ${files.length}`;
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const percent = ((i + 1) / files.length) * 100;
+                progressFill.style.width = `${percent}%`;
+                progressText.innerText = `${i + 1} / ${files.length} - ${file.name}`;
+
+                try {
+                    await downloadFile(file.url, file.name);
+                    successCount++;
+                } catch (error) {
+                    console.error(`下载失败: ${file.name}`, error);
+                    failCount++;
+                }
+            }
+
+            setTimeout(() => {
+                progressDiv.classList.remove('show');
+                alert(`✅ 下载完成！\n\n成功: ${successCount} 个\n失败: ${failCount} 个`);
+            }, 500);
+        }
+
+        // ============ 下载文件到本地 ============
+        async function downloadFile(url, filename) {
+            try {
+                const response = await axios({
+                    method: 'GET',
+                    url: url,
+                    responseType: 'blob',
+                    timeout: 120000
+                });
+
+                const blob = new Blob([response.data]);
+                const downloadUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (error) {
+                console.error(`下载失败: ${filename}`, error);
+                throw error;
+            }
+        }
+
+        // ============ 渲染分页 ============
+        function renderPagination() {
+            const paginationDiv = document.getElementById('pagination');
+            if (totalPages <= 1) {
+                paginationDiv.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            html += `<button onclick="searchData(1)" ${currentPage === 1 ? 'disabled' : ''}>首页</button>`;
+            html += `<button onclick="searchData(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>上一页</button>`;
+
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(totalPages, currentPage + 2);
+
+            if (startPage > 1) html += `<button disabled>...</button>`;
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button onclick="searchData(${i})" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
+            }
+            if (endPage < totalPages) html += `<button disabled>...</button>`;
+
+            html += `<button onclick="searchData(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>下一页</button>`;
+            html += `<button onclick="searchData(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>末页</button>`;
+
+            paginationDiv.innerHTML = html;
+        }
+
+        // ============ 重置筛选 ============
+        function resetFilters() {
+            document.getElementById('companyNameFilter').value = '';
+            document.getElementById('fileTypeFilter').value = '';
+            selectedFiles.clear();
+            searchData(1);
+        }
+
+        // ============ 显示错误 ============
+        function showError(message) {
+            console.error(message);
+            document.getElementById('stats').innerHTML = '❌ ' + message;
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="6" class="loading">❌ ${message}</td></tr>`;
+        }
+
+        // ============ HTML转义 ============
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        // ============ 初始化 ============
+        document.addEventListener('DOMContentLoaded', () => {
+            searchData(1);
+        });
+    </script>
+</body>
+</html>
